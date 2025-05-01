@@ -179,7 +179,7 @@
         <dependency>  <!-- TODO: remove and use some other ANT path matcher -->
             <groupId>org.apache.camel</groupId>
             <artifactId>camel-util</artifactId>
-            <version>3.10.0</version>
+            <version>4.11.0</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
