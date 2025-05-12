@@ -63,7 +63,7 @@
         <maven.lib.version>3.1.0</maven.lib.version>
         <freemarker.version>2.3.34</freemarker.version>
         <logback.version>1.5.16</logback.version>
-        <junit-jupiter.version>5.7.0</junit-jupiter.version>
+        <junit-jupiter.version>5.12.2</junit-jupiter.version>
         <groovy.version>4.0.26</groovy.version>
         <guava.version>33.4.0-jre</guava.version>
     </properties>
