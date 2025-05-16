@@ -10,7 +10,7 @@ Its implementation is class [org.qubership.itool.modules.processor.GraphMerger](
 Please use the following flow in order to merge applications into the single graph.
 1. Prepare dumps with related metadata as a list of DumpAndMetainfo objects
 2. Prepare target metadata for the resulting graph
-3. Create new instance of GraphMerger
+3. Create a GraphMerger instance using GraphMergerFactory
 4. Invoke mergeDumps providing the prepared data
 5. Close GraphMerger 
 
@@ -36,8 +36,9 @@ JsonObject targetMeta = new JsonObject()
 
 JsonObject namespaceDump;
 
-// 3. Create new instance of GraphMerger
-try (GraphMerger merger = new GraphMerger()) {
+// 3. Create a GraphMerger instance using GraphMergerFactory
+GraphMergerFactory factory = new DefaultGraphMergerFactory();
+try (GraphMerger merger = factory.createGraphMerger()) {
 // 4. Invoke mergeDumps providing the prepared data
     namespaceDump = merger.mergeDumps(dumpAndMetaList, targetMeta); // Merge result
 }
