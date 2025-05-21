@@ -19,6 +19,9 @@ package org.qubership.itool.modules.processor;
 import org.qubership.itool.modules.graph.Graph;
 import org.qubership.itool.modules.graph.GraphDumpSupport;
 import org.qubership.itool.modules.graph.GraphImpl;
+import org.qubership.itool.factories.GraphFactory;
+import org.qubership.itool.di.FinalizationTasks;
+import org.qubership.itool.di.NormalizationTasks;
 import org.qubership.itool.modules.processor.matchers.CompoundVertexMatcher;
 import org.qubership.itool.modules.processor.matchers.FileMatcher;
 import org.qubership.itool.modules.processor.matchers.MatcherById;
@@ -26,15 +29,8 @@ import org.qubership.itool.modules.processor.matchers.SourceMocksMatcher;
 import org.qubership.itool.modules.processor.matchers.TargetMocksMatcher;
 import org.qubership.itool.modules.processor.matchers.VertexMatcher;
 import org.qubership.itool.modules.processor.tasks.CreateAppVertexTask;
-import org.qubership.itool.modules.processor.tasks.CreateTransitiveHttpDependenciesTask;
-import org.qubership.itool.modules.processor.tasks.CreateTransitiveQueueDependenciesTask;
+import org.qubership.itool.modules.processor.tasks.GraphProcessorTask;
 import org.qubership.itool.modules.processor.tasks.PatchAppVertexTask;
-import org.qubership.itool.modules.processor.tasks.PatchIsMicroserviceFieldTask;
-import org.qubership.itool.modules.processor.tasks.PatchLanguagesNormalizationTask;
-import org.qubership.itool.modules.processor.tasks.PatchMockedComponentsNormalizationTask;
-import org.qubership.itool.modules.processor.tasks.PatchVertexDnsNamesNormalizationTask;
-import org.qubership.itool.modules.processor.tasks.RecreateDomainsStructureTask;
-import org.qubership.itool.modules.processor.tasks.RecreateHttpDependenciesTask;
 import org.qubership.itool.modules.report.GraphReport;
 import org.qubership.itool.modules.report.GraphReportImpl;
 import org.qubership.itool.utils.FutureUtils;
@@ -55,6 +51,8 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import javax.inject.Inject;
 
 import static org.qubership.itool.modules.graph.Graph.CURRENT_GRAPH_MODEL_VERSION;
 import static org.qubership.itool.modules.graph.Graph.F_ID;
@@ -87,6 +85,11 @@ public class GraphMerger implements MergerApi, Closeable {
     protected boolean ownVertx;
 
     private boolean useDeepCopy;
+    
+    // Injected dependencies
+    private GraphFactory graphFactory;
+    private List<GraphProcessorTask> finalizationTasks;
+    private List<GraphProcessorTask> normalizationTasks;
 
     /** Use this constructor <b>only</b> if there is no {@link Vertx} instance available */
     public GraphMerger() {
@@ -106,6 +109,16 @@ public class GraphMerger implements MergerApi, Closeable {
             this.vertx = vertx;
             ownVertx = false;
         }
+    }
+    
+    @Inject
+    public void setDependencies(
+            GraphFactory graphFactory,
+            @FinalizationTasks List<GraphProcessorTask> finalizationTasks,
+            @NormalizationTasks List<GraphProcessorTask> normalizationTasks) {
+        this.graphFactory = graphFactory;
+        this.finalizationTasks = finalizationTasks;
+        this.normalizationTasks = normalizationTasks;
     }
 
     @Override
@@ -130,8 +143,7 @@ public class GraphMerger implements MergerApi, Closeable {
     @Override
     public JsonObject mergeComponentDumps(Path sourceDirectory, JsonObject targetDesc)
             throws IOException, InvalidGraphException {
-        Graph graph = new GraphImpl();
-        graph.setReport(new GraphReportImpl());
+        Graph graph = createGraph();
 
         prepareGraphForMerging(graph, targetDesc);
         walkAndMerge(sourceDirectory, graph, targetDesc);
@@ -143,8 +155,7 @@ public class GraphMerger implements MergerApi, Closeable {
     @Override
     public JsonObject mergeDumps(List<DumpAndMetainfo> sourceDumps, JsonObject targetDesc)
             throws InvalidGraphException {
-        Graph graph = new GraphImpl();
-        graph.setReport(new GraphReportImpl());
+        Graph graph = createGraph();
 
         prepareGraphForMerging(graph, targetDesc);
         for (DumpAndMetainfo source: sourceDumps) {
@@ -160,6 +171,16 @@ public class GraphMerger implements MergerApi, Closeable {
         return GraphDumpSupport.dumpToJson(graph, useDeepCopy);
     }
 
+    protected Graph createGraph() {
+        if (graphFactory != null) {
+            return graphFactory.createGraph();
+        } else {
+            // Fallback to direct instantiation if factory not injected
+            Graph graph = new GraphImpl();
+            graph.setReport(new GraphReportImpl());
+            return graph;
+        }
+    }
 
     //======================================================
     // Advanced API: Customizable lifecycle
@@ -169,18 +190,48 @@ public class GraphMerger implements MergerApi, Closeable {
     }
 
     public void finalizeGraphAfterMerging(Graph targetGraph, JsonObject targetDesc) {
-        Future<Void> theJob = Future.<Void>succeededFuture()
-                .compose(new CreateAppVertexTask(targetDesc).thenProcessAsync(vertx, targetGraph))
-                .compose(new RecreateHttpDependenciesTask().thenProcessAsync(vertx, targetGraph))
-                .compose(new CreateTransitiveQueueDependenciesTask().thenProcessAsync(vertx, targetGraph))
-                .compose(new CreateTransitiveHttpDependenciesTask().thenProcessAsync(vertx, targetGraph))
-                .compose(new RecreateDomainsStructureTask().thenProcessAsync(vertx, targetGraph))
-                ;
+        Future<Void> theJob = Future.<Void>succeededFuture();
+        
+        if (finalizationTasks != null && !finalizationTasks.isEmpty()) {
+            // Process tasks in the provided order
+            for (GraphProcessorTask task : finalizationTasks) {
+                theJob = theJob.compose(task.thenProcessAsync(vertx, targetGraph));
+            }
+        } else {
+            throw new IllegalStateException("Finalization tasks are not injected");
+        }
+        
         FutureUtils.blockForResultOrException(theJob);
 
         // After the merge we should always have the latest model version
         targetGraph.setGraphVersion(CURRENT_GRAPH_MODEL_VERSION);
     }
+    
+    protected void normalizeGraph(Graph graph) {
+        Future<Void> theJob = Future.<Void>succeededFuture();
+        
+        if (normalizationTasks != null && !normalizationTasks.isEmpty()) {
+            // Process tasks in the provided order
+            for (GraphProcessorTask task : normalizationTasks) {
+                theJob = theJob.compose(task.thenProcessAsync(vertx, graph));
+            }
+        } else {
+            // Fallback to direct instantiation if dependencies not injected
+            throw new IllegalStateException("Normalization tasks are not injected");
+        }
+        
+        FutureUtils.blockForResultOrException(theJob);
+    }
+
+    protected VertexMatcher createMatcher(Graph sourceGraph, Graph targetGraph) {
+        return new CompoundVertexMatcher(
+            new MatcherById(),  // Shall be the first in list
+            new TargetMocksMatcher(targetGraph),
+            new SourceMocksMatcher(),
+            new FileMatcher(targetGraph)
+        );
+    }
+
     /**
      * Merge multiple graphs residing in a directory (and its subdirectories). Merging order is system-dependent.
      *
@@ -287,17 +338,6 @@ public class GraphMerger implements MergerApi, Closeable {
         }
     }
 
-    protected void normalizeGraph(Graph graph) {
-        Future<Void> theJob = Future.<Void>succeededFuture()
-                .compose(new PatchIsMicroserviceFieldTask().thenProcessAsync(vertx, graph))
-                .compose(new PatchMockedComponentsNormalizationTask().thenProcessAsync(vertx, graph))
-                .compose(new PatchVertexDnsNamesNormalizationTask().thenProcessAsync(vertx, graph))
-                .compose(new PatchLanguagesNormalizationTask().thenProcessAsync(vertx, graph))
-                ;
-        FutureUtils.blockForResultOrException(theJob);
-    }
-
-
     //======================================================
     // Internal APIs, may be overridden by subclasses
 
@@ -343,15 +383,6 @@ public class GraphMerger implements MergerApi, Closeable {
         for (JsonObject edge: edgeList) {
             mergeEdge(sourceGraph, edge, targetGraph, targetReport, remapNewVertices, deepCopy);
         }
-    }
-
-    protected VertexMatcher createMatcher(Graph sourceGraph, Graph targetGraph) {
-        return new CompoundVertexMatcher(
-            new MatcherById(),  // Shall be the first in list
-            new TargetMocksMatcher(targetGraph),
-            new SourceMocksMatcher(),
-            new FileMatcher(targetGraph)
-        );
     }
 
     protected void mergeReport(GraphReport sourceReport, GraphReport targetReport, boolean deepCopy) {

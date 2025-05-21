@@ -51,7 +51,7 @@ public class InvalidGraphException extends IllegalArgumentException {
             }
             return "APPLICATION:" + metaInfo.getString(MergerApi.P_APP_NAME) + ":" + appVersion;
         }
-        String fileName = metaInfo.getString(GraphMerger.P_FILE_NAME);
+        String fileName = metaInfo.getString(MergerApi.P_FILE_NAME);
         if (fileName != null) {
             return fileName;
         }
