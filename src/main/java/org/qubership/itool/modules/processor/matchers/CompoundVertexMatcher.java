@@ -30,7 +30,7 @@ public class CompoundVertexMatcher implements VertexMatcher {
     }
 
     public CompoundVertexMatcher(List<VertexMatcher> delegates) {
-        this(delegates.toArray( new VertexMatcher[delegates.size()]) );
+        this(delegates.toArray(new VertexMatcher[delegates.size()]));
     }
 
     @Override
@@ -43,5 +43,4 @@ public class CompoundVertexMatcher implements VertexMatcher {
         }
         return null;
     }
-
 }

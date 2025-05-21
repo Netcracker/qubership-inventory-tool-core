@@ -21,6 +21,8 @@ import org.qubership.itool.modules.artifactory.AppVersionDescriptor;
 import org.qubership.itool.modules.artifactory.FailureStage;
 import org.qubership.itool.modules.artifactory.GraphSnapshot;
 import org.qubership.itool.modules.processor.GraphMerger;
+import org.qubership.itool.modules.processor.GraphMergerFactory;
+import org.qubership.itool.modules.processor.DefaultGraphMergerFactory;
 import org.qubership.itool.modules.report.GraphReportImpl;
 
 import io.vertx.core.Vertx;
@@ -50,6 +52,8 @@ public class GraphManager {
 
     private final GraphFetcher graphFetcher;
 
+    private final GraphMergerFactory graphMergerFactory;
+
 
     public GraphManager(Vertx vertx, GraphFetcher fetcher, boolean failFast) {
         this(vertx, fetcher, defaultClassifierCacheBuilder(), failFast);
@@ -66,9 +70,17 @@ public class GraphManager {
     @SuppressWarnings({ "rawtypes", "unchecked" })
     public GraphManager(Vertx vertx, GraphFetcher fetcher,
             CacheBuilder classifierCacheBuilder, boolean failFast) {
+        this(vertx, fetcher, classifierCacheBuilder, failFast, new DefaultGraphMergerFactory());
+    }
+
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    public GraphManager(Vertx vertx, GraphFetcher fetcher,
+            CacheBuilder classifierCacheBuilder, boolean failFast,
+            GraphMergerFactory graphMergerFactory) {
         this.vertx = vertx;
         this.graphFetcher = fetcher;
         this.failFast = failFast;
+        this.graphMergerFactory = graphMergerFactory;
 
         this.graphClassifierCache = classifierCacheBuilder
             .recordStats()
@@ -115,7 +127,7 @@ public class GraphManager {
 
         if (!failFast || unprocessedAppIds.isEmpty()) {
             // Make merger throw exception for invalid graphs and catch them below
-            try (GraphMerger merger = new GraphMerger(vertx, true)) {
+            try (GraphMerger merger = graphMergerFactory.createGraphMerger(vertx, true)) {
                 JsonObject targetInfo = new JsonObject();
 
                 merger.prepareGraphForMerging(graph, targetInfo);
