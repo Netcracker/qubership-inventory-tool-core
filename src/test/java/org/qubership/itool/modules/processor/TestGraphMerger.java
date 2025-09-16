@@ -18,7 +18,8 @@ package org.qubership.itool.modules.processor;
 
 import org.qubership.itool.modules.gremlin2.P;
 import org.junit.jupiter.api.*;
-
+import org.qubership.itool.di.CoreComponent;
+import org.qubership.itool.di.DaggerFactory;
 import org.qubership.itool.modules.graph.FalloutDto;
 import org.qubership.itool.modules.graph.Graph;
 import org.qubership.itool.modules.graph.GraphDumpSupport;
@@ -200,7 +201,9 @@ public class TestGraphMerger {
         targetDesc.put(P_APP_NAME, "AppName");
         targetDesc.put(P_APP_VERSION, "AppVersion");
 
-        try (GraphMerger merger = new GraphMerger()) {
+        CoreComponent component = DaggerFactory.createCoreComponent();
+        GraphMerger merger = component.graphMerger();
+        try (merger) {
             merger.prepareGraphForMerging(graph, targetDesc);
 
             merger.mergeGraph(graph1, desc1, graph, targetDesc, false);
@@ -625,7 +628,9 @@ public class TestGraphMerger {
         graph.setReport(report);
         JsonObject targetDesc = new JsonObject();
 
-        try (GraphMerger merger = new GraphMerger()) {
+        CoreComponent component = DaggerFactory.createCoreComponent();
+        GraphMerger merger = component.graphMerger();
+        try (merger) {
             merger.prepareGraphForMerging(graph, targetDesc);
 
             merger.mergeGraph(graph1, desc1, graph, targetDesc, false);
@@ -862,15 +867,17 @@ public class TestGraphMerger {
         GraphReport report = new GraphReportImpl();
         graph.setReport(report);
 
-        GraphMerger merger = new GraphMerger();
-        merger.prepareGraphForMerging(graph, targetDesc);
+        CoreComponent component = DaggerFactory.createCoreComponent();
+        GraphMerger merger = component.graphMerger();
+        try (merger) {
+            merger.prepareGraphForMerging(graph, targetDesc);
 
-        merger.mergeGraph(graph1, desc1, graph, targetDesc, false);
-        merger.mergeGraph(graph2, desc2, graph, targetDesc, false);
+            merger.mergeGraph(graph1, desc1, graph, targetDesc, false);
+            merger.mergeGraph(graph2, desc2, graph, targetDesc, false);
 
-        merger.finalizeGraphAfterMerging(graph, targetDesc);
+            merger.finalizeGraphAfterMerging(graph, targetDesc);
+        }
 
-        merger.close();
         return graph;
     }
 
@@ -880,7 +887,9 @@ public class TestGraphMerger {
         GraphReport report = new GraphReportImpl();
         graph.setReport(report);
 
-        try (GraphMerger merger = new GraphMerger()) {
+        CoreComponent component = DaggerFactory.createCoreComponent();
+        GraphMerger merger = component.graphMerger();
+        try (merger) {
             merger.prepareGraphForMerging(graph, targetDesc);
 
             merger.mergeGraph(graph1, desc1, graph, targetDesc, false);
